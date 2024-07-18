@@ -35,7 +35,9 @@ async def download_videos():
             logger.info("Audio stream is located at %s", audio_path)
             transcription = transcribe(audio_path)
             logger.info("video %s transcription %s", message.video.id, transcription)
-            await update_video_description(message, transcription)
+            if len(transcription) > 0:
+                await update_video_description(message, transcription)
+
             os.remove(video_path)
             os.remove(audio_path)
 
@@ -52,14 +54,14 @@ def transcribe(audio_path: str) -> str:
     response.raise_for_status()
     return response.json()['text']
 
-def truncate(text: str) -> str:
+def truncate_video_description(text: str) -> str:
     if len(text) > 385:
         return text[:385-3] + '...'
     else:
         return text
 
 async def update_video_description(message, transcription: str):
-    new_description = f"{message.message}\n{transcription}"
+    new_description = truncate_video_description(f"{message.message}\n{transcription}")
     try:
         await client.edit_message(message.chat_id, message.id, new_description)
     except telethon.errors.rpcerrorlist.MediaCaptionTooLongError as e:
