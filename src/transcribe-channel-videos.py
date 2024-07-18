@@ -61,11 +61,12 @@ def truncate_video_description(text: str) -> str:
         return text
 
 async def update_video_description(message, transcription: str):
-    new_description = truncate_video_description(f"{message.message}\n{transcription}")
-    try:
-        await client.edit_message(message.chat_id, message.id, new_description)
-    except telethon.errors.rpcerrorlist.MediaCaptionTooLongError as e:
-        logger.warning(e)
+    new_description = f"{message.message}\n{transcription}"
+    for _ in range(2):
+        try:
+            await client.edit_message(message.chat_id, message.id, new_description)
+        except telethon.errors.rpcerrorlist.MediaCaptionTooLongError:
+            new_description = truncate_video_description(new_description)
 
 def main():
 

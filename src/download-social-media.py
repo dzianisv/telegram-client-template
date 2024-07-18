@@ -47,16 +47,18 @@ def truncate_video_description(text: str) -> str:
     else:
         return text
 
-async def download_video(url: str) -> str:
+async def download_video(url: str, video_id: str) -> str:
     parsed_url = urlparse(url)
-    video_id = parsed_url.path
 
     ydl_opts = {
+        'cookies': "./cookies.txt",
         'format': 'best',
-        'outtmpl': f'{video_id}.%(ext)s',
+        'outtmpl': f'{parsed_url.hostname}-{video_id}.%(ext)s',
         'noplaylist': True,
         'quiet': True,
     }
+    logger.info("yt-dlp options: %r", ydl_opts)
+
     with YoutubeDL(ydl_opts) as ydl:
         info_dict = ydl.extract_info(url, download=True)
         video_duration = info_dict.get('duration', 0)
@@ -72,29 +74,28 @@ async def handler(event):
     urls = url_pattern.findall(message)
 
     for url in urls:
+
         if any(domain in message for domain in ['youtube.com', 'youtu.be', 'tiktok.com', 'instagram.com']):
             url = message
+            files = []
             try:
-                video_path = await download_video(url)
+                video_path = await download_video(url, event.message.id)
+                files.append(video_path)
                 logger.info(f"Downloaded video to: {video_path}")
                 audio_path = extract_audio(video_path)
+                files.append(audio_path)
                 logger.info(f"Extracted audio to: {audio_path}")
+                logger.info("Transcribing...")
                 transcription = transcribe(audio_path)
                 logger.info(f"Transcription: {transcription}")
 
                 logger.info("Uploading video to chat %s", event.chat_id)
-
-                if len(transcription) > 385:
-                    # Send the transcription as a message
-                    await client.send_message(event.chat_id, f"{transcription}")
-                    captions = ""
-                else:
-                    captions = transcription
-                await client.send_file(event.chat_id, video_path, video_note=True, supports_streaming=True, caption=captions)
-
-
+                await client.send_file(event.chat_id, video_path, video_note=True, supports_streaming=True, caption=truncate_video_description(transcription), reply_to=event.message.id)
             except Exception as e:
-                logger.info(f"Error processing video: {e}")
+                logger.error(f"Error processing video: {e}")
+            finally:
+                for file in files:
+                    os.remove(file)
 
 async def main():
     await client.start()
